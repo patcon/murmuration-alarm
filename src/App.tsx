@@ -17,6 +17,7 @@ interface Config extends PhysicsConfig {
   followerTrail: number  // ms, 0–2000
   showLeader: boolean
   showFollower: boolean
+  trailType: 'outline' | 'path'
 }
 
 const DEFAULT_CONFIG: Config = {
@@ -27,6 +28,7 @@ const DEFAULT_CONFIG: Config = {
   followerTrail: 0,
   showLeader: true,
   showFollower: true,
+  trailType: 'outline',
 }
 
 type TrailPoint = { x: number; y: number; t: number }
@@ -48,21 +50,37 @@ function renderTrail(
   strokeWidth: number,
   maxAge: number,
   now: number,
+  trailType: 'outline' | 'path',
 ) {
   if (maxAge === 0 || buf.length === 0) {
     group.selectAll('circle').remove()
+    group.selectAll('polyline').remove()
     return
   }
-  group.selectAll<SVGCircleElement, TrailPoint>('circle')
-    .data(buf, d => String(d.t))
-    .join('circle')
-    .attr('cx', d => d.x)
-    .attr('cy', d => d.y)
-    .attr('r', radius)
-    .attr('fill', 'none')
-    .attr('stroke', color)
-    .attr('stroke-width', strokeWidth)
-    .attr('opacity', d => Math.max(0, (1 - (now - d.t) / maxAge) * 0.5))
+  if (trailType === 'outline') {
+    group.selectAll('polyline').remove()
+    group.selectAll<SVGCircleElement, TrailPoint>('circle')
+      .data(buf, d => String(d.t))
+      .join('circle')
+      .attr('cx', d => d.x)
+      .attr('cy', d => d.y)
+      .attr('r', radius)
+      .attr('fill', 'none')
+      .attr('stroke', color)
+      .attr('stroke-width', strokeWidth)
+      .attr('opacity', d => Math.max(0, (1 - (now - d.t) / maxAge) * 0.5))
+  } else {
+    group.selectAll('circle').remove()
+    const pts = buf.map(d => `${d.x},${d.y}`).join(' ')
+    group.selectAll<SVGPolylineElement, string>('polyline')
+      .data([pts])
+      .join('polyline')
+      .attr('points', d => d)
+      .attr('fill', 'none')
+      .attr('stroke', color)
+      .attr('stroke-width', strokeWidth)
+      .attr('opacity', 0.5)
+  }
 }
 
 function interpolateRecording(points: RecordedPoint[], t: number): { x: number; y: number } {
@@ -220,7 +238,7 @@ export default function App() {
 
     function tick() {
       const now = Date.now()
-      const { showLeader, showFollower, leaderTrail, followerTrail, stiffness, damping, mass } = configRef.current
+      const { showLeader, showFollower, leaderTrail, followerTrail, stiffness, damping, mass, trailType } = configRef.current
 
       // Live circles: opacity driven by visibility + show flags
       const liveVisible = leader.current.visible
@@ -251,8 +269,8 @@ export default function App() {
         }
       }
 
-      renderTrail(leaderTrailGroup, leaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now)
-      renderTrail(followerTrailGroup, followerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now)
+      renderTrail(leaderTrailGroup, leaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now, trailType)
+      renderTrail(followerTrailGroup, followerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now, trailType)
 
       // Ghost loop playback
       const loop = loopRef.current
@@ -295,8 +313,8 @@ export default function App() {
         }
       }
 
-      renderTrail(ghostLeaderTrailGroup, ghostLeaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now)
-      renderTrail(ghostFollowerTrailGroup, ghostFollowerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now)
+      renderTrail(ghostLeaderTrailGroup, ghostLeaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now, trailType)
+      renderTrail(ghostFollowerTrailGroup, ghostFollowerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now, trailType)
 
       rafRef.current = requestAnimationFrame(tick)
     }
@@ -385,6 +403,7 @@ export default function App() {
         <SliderRow label="Mass" value={config.mass} min={0.1} max={5} step={0.1} onChange={v => setParam('mass', v)} />
         <SliderRow label="Leader trail" value={config.leaderTrail} min={0} max={2000} step={50} displayValue={`${config.leaderTrail}ms`} onChange={v => setParam('leaderTrail', v)} />
         <SliderRow label="Follower trail" value={config.followerTrail} min={0} max={2000} step={50} displayValue={`${config.followerTrail}ms`} onChange={v => setParam('followerTrail', v)} />
+        <RadioRow label="Trail type" value={config.trailType} options={[{ value: 'outline', label: 'outline' }, { value: 'path', label: 'path line' }]} onChange={v => setParam('trailType', v as 'outline' | 'path')} />
         <CheckboxRow label="Show leader" checked={config.showLeader} onChange={v => setParam('showLeader', v)} />
         <CheckboxRow label="Show follower" checked={config.showFollower} onChange={v => setParam('showFollower', v)} />
       </div>
@@ -430,5 +449,30 @@ function CheckboxRow({ label, checked, onChange }: {
       />
       <span>{label}</span>
     </label>
+  )
+}
+
+function RadioRow({ label, value, options, onChange }: {
+  label: string
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (v: string) => void
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span>{label}</span>
+      <div style={{ display: 'flex', gap: 12 }}>
+        {options.map(opt => (
+          <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            <input
+              type="radio" name={label} value={opt.value} checked={value === opt.value}
+              onChange={() => onChange(opt.value)}
+              style={{ accentColor: 'dodgerblue', width: 14, height: 14 }}
+            />
+            <span>{opt.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
   )
 }

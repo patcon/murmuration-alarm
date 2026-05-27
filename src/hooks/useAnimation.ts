@@ -1,15 +1,19 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
-import type { Config, TrailPoint, RecordedPoint, Recording } from '../types'
-import { LEADER_RADIUS, FOLLOWER_RADIUS, DOUBLE_TAP_MS, DEFAULT_CONFIG } from '../constants'
+import type { Config, TrailPoint, RecordedPoint, Recording, MetricSample, MetricIndex } from '../types'
+import { LEADER_RADIUS, FOLLOWER_RADIUS, DOUBLE_TAP_MS, DEFAULT_CONFIG, SYNC_THRESHOLD_PX } from '../constants'
 import { trimTrail, renderTrail } from '../utils/trail'
 import { interpolateRecording, computeReturnDuration } from '../utils/recording'
+
+const METRIC_LABELS = ['dist', 'sync %', 'speed Δ'] as const
 
 export function useAnimation(
   svgRef: React.RefObject<SVGSVGElement | null>,
   config: Config,
   setIsRecording: (v: boolean) => void,
   setStartMarker: (v: { x: number; y: number } | null) => void,
+  chipRef: React.RefObject<HTMLDivElement | null>,
+  metricIndexRef: React.RefObject<MetricIndex>,
 ) {
   const configRef = useRef(config)
   configRef.current = config
@@ -30,6 +34,8 @@ export function useAnimation(
   const loopRef = useRef<Recording | null>(null)
   const loopStartTime = useRef(0)
   const ghostPhysics = useRef({ x: -999, y: -999, vx: 0, vy: 0 })
+  const metricSamplesRef = useRef<MetricSample[]>([])
+  const lastLoopCycle = useRef(-1)
 
   useEffect(() => {
     const svg = d3.select(svgRef.current)
@@ -160,11 +166,14 @@ export function useAnimation(
       renderTrail(followerTrailGroup, followerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now, trailType, trailFade)
 
       const loop = loopRef.current
+      let ghostActive = false
       if (loop && loop.duration > 0) {
         const elapsed = now - loopStartTime.current
         const totalDuration = loop.duration + loop.returnDuration
+        const cycle = Math.floor(elapsed / totalDuration)
         const t = elapsed % totalDuration
         if (t <= loop.duration) {
+          ghostActive = true
           const ghostLeaderPos = interpolateRecording(loop.points, t)
           const gp = ghostPhysics.current
           const dx = ghostLeaderPos.x - gp.x
@@ -189,6 +198,41 @@ export function useAnimation(
           } else {
             ghostFollowerTrailRef.current.length = 0
           }
+
+          if (liveVisible) {
+            if (cycle !== lastLoopCycle.current) {
+              metricSamplesRef.current.length = 0
+              lastLoopCycle.current = cycle
+            }
+            const p = physics.current
+            const distVal = Math.sqrt((p.x - gp.x) ** 2 + (p.y - gp.y) ** 2)
+            const vLive = Math.sqrt(p.vx ** 2 + p.vy ** 2)
+            const vGhost = Math.sqrt(gp.vx ** 2 + gp.vy ** 2)
+            metricSamplesRef.current.push({ dist: distVal, vDiff: Math.abs(vLive - vGhost) })
+
+            const chip = chipRef.current
+            if (chip) {
+              const samples = metricSamplesRef.current
+              const n = samples.length
+              const idx = metricIndexRef.current
+              let value: string
+              if (idx === 0) {
+                const mean = samples.reduce((s, x) => s + x.dist, 0) / n
+                value = mean.toFixed(1) + ' px'
+              } else if (idx === 1) {
+                const hits = samples.filter(x => x.dist < SYNC_THRESHOLD_PX).length
+                value = ((hits / n) * 100).toFixed(0) + '%'
+              } else {
+                const mean = samples.reduce((s, x) => s + x.vDiff, 0) / n
+                value = mean.toFixed(2) + ' px/f'
+              }
+              const label = chip.querySelector('.chip-label') as HTMLElement | null
+              const val = chip.querySelector('.chip-value') as HTMLElement | null
+              if (label) label.textContent = METRIC_LABELS[idx]
+              if (val) val.textContent = value
+              chip.style.opacity = '1'
+            }
+          }
         } else {
           ghostLeaderDot.attr('opacity', 0)
           ghostFollowerDot.attr('opacity', 0)
@@ -197,6 +241,11 @@ export function useAnimation(
           const first = loop.points[0]
           ghostPhysics.current = { x: first.x, y: first.y, vx: 0, vy: 0 }
         }
+      }
+
+      if (!ghostActive || !liveVisible) {
+        const chip = chipRef.current
+        if (chip) chip.style.opacity = '0'
       }
 
       renderTrail(ghostLeaderTrailGroup, ghostLeaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, loop?.config.leaderTrail ?? 0, now, loop?.config.trailType ?? trailType, loop?.config.trailFade ?? trailFade)

@@ -4,6 +4,7 @@ export const LEADER_RADIUS = 44
 export const FOLLOWER_RADIUS = 30
 export const PANEL_HEIGHT = 270
 export const DOUBLE_TAP_MS = 300
+export const SYNC_THRESHOLD_PX = 80
 
 export const DEFAULT_CONFIG: Config = {
   stiffness: 0.12,

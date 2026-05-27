@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { DEFAULT_CONFIG, LEADER_RADIUS, FOLLOWER_RADIUS, PANEL_HEIGHT } from './constants'
-import type { Config } from './types'
+import type { Config, MetricIndex } from './types'
 import { useAnimation } from './hooks/useAnimation'
 import { SliderRow } from './components/SliderRow'
 import { CheckboxRow } from './components/CheckboxRow'
@@ -14,8 +14,12 @@ export default function App() {
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG)
   const [isRecording, setIsRecording] = useState(false)
   const [startMarker, setStartMarker] = useState<{ x: number; y: number } | null>(null)
+  const [metricIndex, setMetricIndex] = useState<MetricIndex>(0)
+  const chipRef = useRef<HTMLDivElement>(null)
+  const metricIndexRef = useRef<MetricIndex>(metricIndex)
+  metricIndexRef.current = metricIndex
 
-  useAnimation(svgRef, config, setIsRecording, setStartMarker)
+  useAnimation(svgRef, config, setIsRecording, setStartMarker, chipRef, metricIndexRef)
 
   function setParam<K extends keyof Config>(key: K, value: Config[K]) {
     setConfig(c => ({ ...c, [key]: value }))
@@ -55,6 +59,23 @@ export default function App() {
           animation: 'pulse-record 0.8s ease-in-out infinite',
         }} />
       )}
+
+      <div
+        ref={chipRef}
+        onClick={() => setMetricIndex(i => ((i + 1) % 3) as MetricIndex)}
+        style={{
+          position: 'fixed', top: 16, left: 16, zIndex: 50,
+          background: 'rgba(10,10,10,0.75)', backdropFilter: 'blur(6px)',
+          color: '#7df', fontFamily: 'monospace', fontSize: 13,
+          padding: '6px 12px', borderRadius: 20,
+          opacity: 0, transition: 'opacity 0.2s',
+          cursor: 'pointer', userSelect: 'none',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
+        }}
+      >
+        <span className="chip-label" style={{ fontSize: 10, opacity: 0.7 }} />
+        <span className="chip-value" style={{ fontWeight: 'bold' }} />
+      </div>
 
       <button
         onClick={() => setDebugOpen(o => !o)}

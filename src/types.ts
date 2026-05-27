@@ -15,4 +15,4 @@ export interface Config extends PhysicsConfig {
 
 export type TrailPoint = { x: number; y: number; t: number }
 export type RecordedPoint = { x: number; y: number; t: number }
-export type Recording = { points: RecordedPoint[]; duration: number; returnDuration: number; config: PhysicsConfig }
+export type Recording = { points: RecordedPoint[]; duration: number; returnDuration: number; config: Config }

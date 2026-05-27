@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
-import type { Config, PhysicsConfig, TrailPoint, RecordedPoint, Recording } from '../types'
+import type { Config, TrailPoint, RecordedPoint, Recording } from '../types'
 import { LEADER_RADIUS, FOLLOWER_RADIUS, DOUBLE_TAP_MS, DEFAULT_CONFIG } from '../constants'
 import { trimTrail, renderTrail } from '../utils/trail'
 import { interpolateRecording, computeReturnDuration } from '../utils/recording'
@@ -24,7 +24,7 @@ export function useAnimation(
   const ghostFollowerTrailRef = useRef<TrailPoint[]>([])
 
   const lastTapTime = useRef(0)
-  const recordingRef = useRef<{ active: boolean; startTime: number; points: RecordedPoint[]; config: PhysicsConfig }>({
+  const recordingRef = useRef<{ active: boolean; startTime: number; points: RecordedPoint[]; config: Config }>({
     active: false, startTime: 0, points: [], config: DEFAULT_CONFIG,
   })
   const loopRef = useRef<Recording | null>(null)
@@ -71,8 +71,7 @@ export function useAnimation(
       if (now - lastTapTime.current < DOUBLE_TAP_MS) {
         lastTapTime.current = 0
         const touch = event.touches[0]
-        const { stiffness, damping, mass } = configRef.current
-        recordingRef.current = { active: true, startTime: now, points: [], config: { stiffness, damping, mass } }
+        recordingRef.current = { active: true, startTime: now, points: [], config: { ...configRef.current } }
         loopRef.current = null
         ghostPhysics.current = { x: -999, y: -999, vx: 0, vy: 0 }
         ghostLeaderTrailRef.current.length = 0
@@ -175,18 +174,18 @@ export function useAnimation(
           gp.x += gp.vx
           gp.y += gp.vy
 
-          ghostLeaderDot.attr('cx', ghostLeaderPos.x).attr('cy', ghostLeaderPos.y).attr('opacity', showLeader ? 0.4 : 0)
-          ghostFollowerDot.attr('cx', gp.x).attr('cy', gp.y).attr('opacity', showFollower ? 0.4 : 0)
+          ghostLeaderDot.attr('cx', ghostLeaderPos.x).attr('cy', ghostLeaderPos.y).attr('opacity', loop.config.showLeader ? 0.4 : 0)
+          ghostFollowerDot.attr('cx', gp.x).attr('cy', gp.y).attr('opacity', loop.config.showFollower ? 0.4 : 0)
 
-          if (leaderTrail > 0) {
+          if (loop.config.leaderTrail > 0) {
             ghostLeaderTrailRef.current.push({ x: ghostLeaderPos.x, y: ghostLeaderPos.y, t: now })
-            trimTrail(ghostLeaderTrailRef.current, leaderTrail, now)
+            trimTrail(ghostLeaderTrailRef.current, loop.config.leaderTrail, now)
           } else {
             ghostLeaderTrailRef.current.length = 0
           }
-          if (followerTrail > 0) {
+          if (loop.config.followerTrail > 0) {
             ghostFollowerTrailRef.current.push({ x: gp.x, y: gp.y, t: now })
-            trimTrail(ghostFollowerTrailRef.current, followerTrail, now)
+            trimTrail(ghostFollowerTrailRef.current, loop.config.followerTrail, now)
           } else {
             ghostFollowerTrailRef.current.length = 0
           }
@@ -200,8 +199,8 @@ export function useAnimation(
         }
       }
 
-      renderTrail(ghostLeaderTrailGroup, ghostLeaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now, trailType, trailFade)
-      renderTrail(ghostFollowerTrailGroup, ghostFollowerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now, trailType, trailFade)
+      renderTrail(ghostLeaderTrailGroup, ghostLeaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, loop?.config.leaderTrail ?? 0, now, loop?.config.trailType ?? trailType, loop?.config.trailFade ?? trailFade)
+      renderTrail(ghostFollowerTrailGroup, ghostFollowerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, loop?.config.followerTrail ?? 0, now, loop?.config.trailType ?? trailType, loop?.config.trailFade ?? trailFade)
 
       rafRef.current = requestAnimationFrame(tick)
     }

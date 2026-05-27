@@ -255,13 +255,13 @@ export default function App() {
         p.y += p.vy
         followerDot.attr('cx', p.x).attr('cy', p.y)
 
-        if (showLeader && leaderTrail > 0) {
+        if (leaderTrail > 0) {
           leaderTrailRef.current.push({ x: leader.current.x, y: leader.current.y, t: now })
           trimTrail(leaderTrailRef.current, leaderTrail, now)
         } else {
           leaderTrailRef.current.length = 0
         }
-        if (showFollower && followerTrail > 0) {
+        if (followerTrail > 0) {
           followerTrailRef.current.push({ x: p.x, y: p.y, t: now })
           trimTrail(followerTrailRef.current, followerTrail, now)
         } else {
@@ -291,13 +291,13 @@ export default function App() {
           ghostLeaderDot.attr('cx', ghostLeaderPos.x).attr('cy', ghostLeaderPos.y).attr('opacity', showLeader ? 0.4 : 0)
           ghostFollowerDot.attr('cx', gp.x).attr('cy', gp.y).attr('opacity', showFollower ? 0.4 : 0)
 
-          if (showLeader && leaderTrail > 0) {
+          if (leaderTrail > 0) {
             ghostLeaderTrailRef.current.push({ x: ghostLeaderPos.x, y: ghostLeaderPos.y, t: now })
             trimTrail(ghostLeaderTrailRef.current, leaderTrail, now)
           } else {
             ghostLeaderTrailRef.current.length = 0
           }
-          if (showFollower && followerTrail > 0) {
+          if (followerTrail > 0) {
             ghostFollowerTrailRef.current.push({ x: gp.x, y: gp.y, t: now })
             trimTrail(ghostFollowerTrailRef.current, followerTrail, now)
           } else {

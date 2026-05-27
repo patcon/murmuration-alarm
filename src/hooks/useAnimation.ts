@@ -37,6 +37,7 @@ export function useAnimation(
   const ghostPhysics = useRef({ x: -999, y: -999, vx: 0, vy: 0 })
   const metricSamplesRef = useRef<MetricSample[]>([])
   const lastLoopCycle = useRef(-1)
+  const lastMetricIndex = useRef<MetricIndex>(metricIndexRef.current)
 
   useEffect(() => {
     const svg = d3.select(svgRef.current)
@@ -293,8 +294,13 @@ export function useAnimation(
         chip.style.opacity = (loop || recordingRef.current.active) ? '1' : '0'
         const val = chip.querySelector('.chip-value') as HTMLElement | null
         const label = chip.querySelector('.chip-label') as HTMLElement | null
-        if (val && !val.textContent) val.textContent = '--'
-        if (label && !label.textContent) label.textContent = METRIC_LABELS[metricIndexRef.current]
+        if (metricIndexRef.current !== lastMetricIndex.current) {
+          lastMetricIndex.current = metricIndexRef.current
+          if (val) val.textContent = '--'
+        } else if (val && !val.textContent) {
+          val.textContent = '--'
+        }
+        if (label) label.textContent = METRIC_LABELS[metricIndexRef.current]
       }
 
       const timer = timerRef.current

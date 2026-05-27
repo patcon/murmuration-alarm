@@ -3,7 +3,7 @@ import * as d3 from 'd3'
 
 const LEADER_RADIUS = 44
 const FOLLOWER_RADIUS = 30
-const PANEL_HEIGHT = 185
+const PANEL_HEIGHT = 270
 const DOUBLE_TAP_MS = 300
 
 interface PhysicsConfig {
@@ -12,19 +12,62 @@ interface PhysicsConfig {
   mass: number
 }
 
-const DEFAULT_CONFIG: PhysicsConfig = {
+interface Config extends PhysicsConfig {
+  leaderTrail: number    // ms, 0–2000
+  followerTrail: number  // ms, 0–2000
+  showLeader: boolean
+  showFollower: boolean
+}
+
+const DEFAULT_CONFIG: Config = {
   stiffness: 0.12,
   damping: 0.75,
   mass: 1,
+  leaderTrail: 0,
+  followerTrail: 0,
+  showLeader: true,
+  showFollower: true,
 }
 
+type TrailPoint = { x: number; y: number; t: number }
 type RecordedPoint = { x: number; y: number; t: number }
 type Recording = { points: RecordedPoint[]; duration: number; returnDuration: number; config: PhysicsConfig }
+
+function trimTrail(buf: TrailPoint[], maxAge: number, now: number) {
+  const cutoff = now - maxAge
+  let i = 0
+  while (i < buf.length && buf[i].t < cutoff) i++
+  if (i > 0) buf.splice(0, i)
+}
+
+function renderTrail(
+  group: d3.Selection<SVGGElement, unknown, null, undefined>,
+  buf: TrailPoint[],
+  radius: number,
+  color: string,
+  strokeWidth: number,
+  maxAge: number,
+  now: number,
+) {
+  if (maxAge === 0 || buf.length === 0) {
+    group.selectAll('circle').remove()
+    return
+  }
+  group.selectAll<SVGCircleElement, TrailPoint>('circle')
+    .data(buf, d => String(d.t))
+    .join('circle')
+    .attr('cx', d => d.x)
+    .attr('cy', d => d.y)
+    .attr('r', radius)
+    .attr('fill', 'none')
+    .attr('stroke', color)
+    .attr('stroke-width', strokeWidth)
+    .attr('opacity', d => Math.max(0, (1 - (now - d.t) / maxAge) * 0.5))
+}
 
 function interpolateRecording(points: RecordedPoint[], t: number): { x: number; y: number } {
   if (points.length === 0) return { x: 0, y: 0 }
   if (points.length === 1) return { x: points[0].x, y: points[0].y }
-  // Binary search for the segment containing t
   let lo = 0, hi = points.length - 1
   while (lo < hi - 1) {
     const mid = (lo + hi) >> 1
@@ -35,7 +78,6 @@ function interpolateRecording(points: RecordedPoint[], t: number): { x: number; 
   const frac = (t - a.t) / (b.t - a.t)
   return { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac }
 }
-
 
 function computeReturnDuration(points: RecordedPoint[]): number {
   let pathLength = 0
@@ -57,19 +99,23 @@ export default function App() {
   const leaderRef = useRef<SVGCircleElement | null>(null)
   const followerRef = useRef<SVGCircleElement | null>(null)
   const [debugOpen, setDebugOpen] = useState(false)
-  const [config, setConfig] = useState<PhysicsConfig>(DEFAULT_CONFIG)
+  const [config, setConfig] = useState<Config>(DEFAULT_CONFIG)
   const configRef = useRef(config)
   configRef.current = config
 
-  // Live physics state
   const physics = useRef({ x: -999, y: -999, vx: 0, vy: 0 })
   const leader = useRef({ x: -999, y: -999, visible: false })
   const rafRef = useRef<number>(0)
 
+  // Trail buffers
+  const leaderTrailRef = useRef<TrailPoint[]>([])
+  const followerTrailRef = useRef<TrailPoint[]>([])
+  const ghostLeaderTrailRef = useRef<TrailPoint[]>([])
+  const ghostFollowerTrailRef = useRef<TrailPoint[]>([])
+
   // Recording state
   const [isRecording, setIsRecording] = useState(false)
   const [startMarker, setStartMarker] = useState<{ x: number; y: number } | null>(null)
-  const isRecordingRef = useRef(false)
   const lastTapTime = useRef(0)
   const recordingRef = useRef<{ active: boolean; startTime: number; points: RecordedPoint[]; config: PhysicsConfig }>({
     active: false, startTime: 0, points: [], config: DEFAULT_CONFIG,
@@ -84,6 +130,10 @@ export default function App() {
     const followerDot = svg.select<SVGCircleElement>('.follower')
     const ghostLeaderDot = svg.select<SVGCircleElement>('.ghost-leader')
     const ghostFollowerDot = svg.select<SVGCircleElement>('.ghost-follower')
+    const leaderTrailGroup = svg.select<SVGGElement>('.leader-trail')
+    const followerTrailGroup = svg.select<SVGGElement>('.follower-trail')
+    const ghostLeaderTrailGroup = svg.select<SVGGElement>('.ghost-leader-trail')
+    const ghostFollowerTrailGroup = svg.select<SVGGElement>('.ghost-follower-trail')
 
     let initialized = false
 
@@ -96,35 +146,32 @@ export default function App() {
         physics.current.y = y
         initialized = true
       }
-      leaderDot.attr('cx', x).attr('cy', y).attr('opacity', 1)
-      followerDot.attr('opacity', 1)
+      leaderDot.attr('cx', x).attr('cy', y)
     }
 
     function hide() {
       leader.current.visible = false
-      leaderDot.attr('opacity', 0)
-      followerDot.attr('opacity', 0)
+      leaderTrailRef.current.length = 0
+      followerTrailRef.current.length = 0
       initialized = false
     }
 
-    function onMouseMove(event: MouseEvent) {
-      show(event.clientX, event.clientY)
-    }
+    function onMouseMove(event: MouseEvent) { show(event.clientX, event.clientY) }
     function onMouseLeave() { hide() }
 
     function onTouchStart(event: TouchEvent) {
       const now = Date.now()
       if (now - lastTapTime.current < DOUBLE_TAP_MS) {
-        // Double-tap: start recording
         lastTapTime.current = 0
         const touch = event.touches[0]
-        const snapshotConfig = { ...configRef.current }
-        recordingRef.current = { active: true, startTime: now, points: [], config: snapshotConfig }
+        const { stiffness, damping, mass } = configRef.current
+        recordingRef.current = { active: true, startTime: now, points: [], config: { stiffness, damping, mass } }
         loopRef.current = null
         ghostPhysics.current = { x: -999, y: -999, vx: 0, vy: 0 }
+        ghostLeaderTrailRef.current.length = 0
+        ghostFollowerTrailRef.current.length = 0
         ghostLeaderDot.attr('opacity', 0)
         ghostFollowerDot.attr('opacity', 0)
-        isRecordingRef.current = true
         setIsRecording(true)
         setStartMarker({ x: touch.clientX, y: touch.clientY })
       } else {
@@ -147,7 +194,6 @@ export default function App() {
       if (recordingRef.current.active) {
         const { points, config: snapConfig } = recordingRef.current
         if (points.length >= 2) {
-          // Normalize so playback starts at t=0 from the first real movement
           const offset = points[0].t
           for (const p of points) p.t -= offset
           const duration = points[points.length - 1].t
@@ -158,7 +204,6 @@ export default function App() {
           ghostPhysics.current = { x: firstPoint.x, y: firstPoint.y, vx: 0, vy: 0 }
         }
         recordingRef.current.active = false
-        isRecordingRef.current = false
         setIsRecording(false)
         setStartMarker(null)
       }
@@ -174,9 +219,15 @@ export default function App() {
     el.addEventListener('touchcancel', onTouchEnd)
 
     function tick() {
-      // Live follower physics
-      if (leader.current.visible) {
-        const { stiffness, damping, mass } = configRef.current
+      const now = Date.now()
+      const { showLeader, showFollower, leaderTrail, followerTrail, stiffness, damping, mass } = configRef.current
+
+      // Live circles: opacity driven by visibility + show flags
+      const liveVisible = leader.current.visible
+      leaderDot.attr('opacity', liveVisible && showLeader ? 1 : 0)
+      followerDot.attr('opacity', liveVisible && showFollower ? 1 : 0)
+
+      if (liveVisible) {
         const p = physics.current
         const dx = leader.current.x - p.x
         const dy = leader.current.y - p.y
@@ -185,34 +236,67 @@ export default function App() {
         p.x += p.vx
         p.y += p.vy
         followerDot.attr('cx', p.x).attr('cy', p.y)
+
+        if (showLeader && leaderTrail > 0) {
+          leaderTrailRef.current.push({ x: leader.current.x, y: leader.current.y, t: now })
+          trimTrail(leaderTrailRef.current, leaderTrail, now)
+        } else {
+          leaderTrailRef.current.length = 0
+        }
+        if (showFollower && followerTrail > 0) {
+          followerTrailRef.current.push({ x: p.x, y: p.y, t: now })
+          trimTrail(followerTrailRef.current, followerTrail, now)
+        } else {
+          followerTrailRef.current.length = 0
+        }
       }
+
+      renderTrail(leaderTrailGroup, leaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now)
+      renderTrail(followerTrailGroup, followerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now)
 
       // Ghost loop playback
       const loop = loopRef.current
       if (loop && loop.duration > 0) {
-        const elapsed = Date.now() - loopStartTime.current
+        const elapsed = now - loopStartTime.current
         const totalDuration = loop.duration + loop.returnDuration
         const t = elapsed % totalDuration
         if (t <= loop.duration) {
           const ghostLeaderPos = interpolateRecording(loop.points, t)
-          const { stiffness, damping, mass } = loop.config
           const gp = ghostPhysics.current
           const dx = ghostLeaderPos.x - gp.x
           const dy = ghostLeaderPos.y - gp.y
-          gp.vx = gp.vx * damping + (dx * stiffness) / mass
-          gp.vy = gp.vy * damping + (dy * stiffness) / mass
+          gp.vx = gp.vx * loop.config.damping + (dx * loop.config.stiffness) / loop.config.mass
+          gp.vy = gp.vy * loop.config.damping + (dy * loop.config.stiffness) / loop.config.mass
           gp.x += gp.vx
           gp.y += gp.vy
-          ghostLeaderDot.attr('cx', ghostLeaderPos.x).attr('cy', ghostLeaderPos.y).attr('opacity', 0.4)
-          ghostFollowerDot.attr('cx', gp.x).attr('cy', gp.y).attr('opacity', 0.4)
+
+          ghostLeaderDot.attr('cx', ghostLeaderPos.x).attr('cy', ghostLeaderPos.y).attr('opacity', showLeader ? 0.4 : 0)
+          ghostFollowerDot.attr('cx', gp.x).attr('cy', gp.y).attr('opacity', showFollower ? 0.4 : 0)
+
+          if (showLeader && leaderTrail > 0) {
+            ghostLeaderTrailRef.current.push({ x: ghostLeaderPos.x, y: ghostLeaderPos.y, t: now })
+            trimTrail(ghostLeaderTrailRef.current, leaderTrail, now)
+          } else {
+            ghostLeaderTrailRef.current.length = 0
+          }
+          if (showFollower && followerTrail > 0) {
+            ghostFollowerTrailRef.current.push({ x: gp.x, y: gp.y, t: now })
+            trimTrail(ghostFollowerTrailRef.current, followerTrail, now)
+          } else {
+            ghostFollowerTrailRef.current.length = 0
+          }
         } else {
-          // Return gap: hide circles and pre-position physics at start so next iteration appears cleanly
           ghostLeaderDot.attr('opacity', 0)
           ghostFollowerDot.attr('opacity', 0)
+          ghostLeaderTrailRef.current.length = 0
+          ghostFollowerTrailRef.current.length = 0
           const first = loop.points[0]
           ghostPhysics.current = { x: first.x, y: first.y, vx: 0, vy: 0 }
         }
       }
+
+      renderTrail(ghostLeaderTrailGroup, ghostLeaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now)
+      renderTrail(ghostFollowerTrailGroup, ghostFollowerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now)
 
       rafRef.current = requestAnimationFrame(tick)
     }
@@ -230,7 +314,7 @@ export default function App() {
     }
   }, [])
 
-  function setParam<K extends keyof PhysicsConfig>(key: K, value: number) {
+  function setParam<K extends keyof Config>(key: K, value: Config[K]) {
     setConfig(c => ({ ...c, [key]: value }))
   }
 
@@ -240,117 +324,111 @@ export default function App() {
         ref={svgRef}
         style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', touchAction: 'none' }}
       >
+        <g className="ghost-leader-trail" />
+        <g className="ghost-follower-trail" />
+        <g className="leader-trail" />
+        <g className="follower-trail" />
         <circle className="ghost-leader" r={LEADER_RADIUS} fill="none" stroke="dodgerblue" strokeWidth={3} opacity={0} />
         <circle className="ghost-follower" r={FOLLOWER_RADIUS} fill="none" stroke="tomato" strokeWidth={2} opacity={0} />
         <circle ref={leaderRef} className="leader" r={LEADER_RADIUS} fill="none" stroke="dodgerblue" strokeWidth={3} opacity={0} />
         <circle ref={followerRef} className="follower" r={FOLLOWER_RADIUS} fill="none" stroke="tomato" strokeWidth={2} opacity={0} />
       </svg>
 
-      {/* Recording indicator */}
       {isRecording && (
         <div style={{
-          position: 'fixed',
-          top: 16,
-          right: 16,
-          width: 12,
-          height: 12,
-          borderRadius: '50%',
-          background: 'tomato',
-          zIndex: 50,
+          position: 'fixed', top: 16, right: 16,
+          width: 12, height: 12, borderRadius: '50%',
+          background: 'tomato', zIndex: 50,
           animation: 'pulse-record 1s ease-in-out infinite',
         }} />
       )}
 
-      {/* Start marker: pulsing green dot at recording origin */}
       {startMarker && (
         <div style={{
           position: 'fixed',
-          left: startMarker.x - 8,
-          top: startMarker.y - 8,
-          width: 16,
-          height: 16,
-          borderRadius: '50%',
-          background: 'limegreen',
-          zIndex: 50,
-          pointerEvents: 'none',
+          left: startMarker.x - 8, top: startMarker.y - 8,
+          width: 16, height: 16, borderRadius: '50%',
+          background: 'limegreen', zIndex: 50, pointerEvents: 'none',
           animation: 'pulse-record 0.8s ease-in-out infinite',
         }} />
       )}
 
-      {/* Debug toggle — floats above panel */}
       <button
         onClick={() => setDebugOpen(o => !o)}
         style={{
           position: 'fixed',
           bottom: debugOpen ? PANEL_HEIGHT + 8 : 8,
-          right: 12,
-          zIndex: 10,
-          background: 'rgba(0,0,0,0.6)',
-          color: '#fff',
-          border: '1px solid #555',
-          borderRadius: 6,
-          padding: '4px 10px',
-          cursor: 'pointer',
-          fontSize: 12,
+          right: 12, zIndex: 10,
+          background: 'rgba(0,0,0,0.6)', color: '#fff',
+          border: '1px solid #555', borderRadius: 6,
+          padding: '4px 10px', cursor: 'pointer', fontSize: 12,
           transition: 'bottom 0.2s',
         }}
       >
         {debugOpen ? 'Close debug' : 'Debug'}
       </button>
 
-      {/* Debug panel */}
       {debugOpen && (
         <div style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: PANEL_HEIGHT,
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          height: PANEL_HEIGHT, overflowY: 'auto',
           boxSizing: 'border-box',
-          background: 'rgba(10,10,10,0.88)',
-          color: '#eee',
-          zIndex: 9,
-          fontFamily: 'monospace',
-          fontSize: 13,
-          backdropFilter: 'blur(4px)',
-          borderTop: '1px solid #333',
+          background: 'rgba(10,10,10,0.88)', color: '#eee',
+          zIndex: 9, fontFamily: 'monospace', fontSize: 13,
+          backdropFilter: 'blur(4px)', borderTop: '1px solid #333',
           padding: '12px 20px 16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
+          display: 'flex', flexDirection: 'column', gap: 10,
         }}>
           <SliderRow label="Stiffness" value={config.stiffness} min={0.01} max={0.5} step={0.01} onChange={v => setParam('stiffness', v)} />
           <SliderRow label="Damping" value={config.damping} min={0.1} max={0.99} step={0.01} onChange={v => setParam('damping', v)} />
           <SliderRow label="Mass" value={config.mass} min={0.1} max={5} step={0.1} onChange={v => setParam('mass', v)} />
+          <SliderRow label="Leader trail" value={config.leaderTrail} min={0} max={2000} step={50} displayValue={`${config.leaderTrail}ms`} onChange={v => setParam('leaderTrail', v)} />
+          <SliderRow label="Follower trail" value={config.followerTrail} min={0} max={2000} step={50} displayValue={`${config.followerTrail}ms`} onChange={v => setParam('followerTrail', v)} />
+          <CheckboxRow label="Show leader" checked={config.showLeader} onChange={v => setParam('showLeader', v)} />
+          <CheckboxRow label="Show follower" checked={config.showFollower} onChange={v => setParam('showFollower', v)} />
         </div>
       )}
     </>
   )
 }
 
-function SliderRow({ label, value, min, max, step, onChange }: {
+function SliderRow({ label, value, min, max, step, onChange, displayValue }: {
   label: string
   value: number
   min: number
   max: number
   step: number
   onChange: (v: number) => void
+  displayValue?: string
 }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <span style={{ display: 'flex', justifyContent: 'space-between' }}>
         <span>{label}</span>
-        <span style={{ color: '#7df' }}>{value.toFixed(2)}</span>
+        <span style={{ color: '#7df' }}>{displayValue ?? value.toFixed(2)}</span>
       </span>
       <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
+        type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
         style={{ width: '100%', accentColor: 'dodgerblue' }}
       />
+    </label>
+  )
+}
+
+function CheckboxRow({ label, checked, onChange }: {
+  label: string
+  checked: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+      <input
+        type="checkbox" checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        style={{ accentColor: 'dodgerblue', width: 14, height: 14 }}
+      />
+      <span>{label}</span>
     </label>
   )
 }

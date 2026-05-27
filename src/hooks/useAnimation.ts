@@ -14,6 +14,7 @@ export function useAnimation(
   setStartMarker: (v: { x: number; y: number } | null) => void,
   chipRef: React.RefObject<HTMLDivElement | null>,
   metricIndexRef: React.RefObject<MetricIndex>,
+  loopBarRef: React.RefObject<HTMLDivElement | null>,
 ) {
   const configRef = useRef(config)
   configRef.current = config
@@ -288,6 +289,21 @@ export function useAnimation(
       if (!ghostActive || !liveVisible) {
         const chip = chipRef.current
         if (chip) chip.style.opacity = '0'
+      }
+
+      const bar = loopBarRef.current
+      if (bar) {
+        if (loop && loop.duration > 0) {
+          const elapsed = now - loopStartTime.current
+          const t = elapsed % (loop.duration + loop.returnDuration)
+          if (t <= loop.duration) {
+            bar.style.width = ((t / loop.duration) * 100) + '%'
+          } else {
+            bar.style.width = '0%'
+          }
+        } else {
+          bar.style.width = '0%'
+        }
       }
 
       renderTrail(ghostLeaderTrailGroup, ghostLeaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, loop?.config.leaderTrail ?? 0, now, loop?.config.trailType ?? trailType, loop?.config.trailFade ?? trailFade)

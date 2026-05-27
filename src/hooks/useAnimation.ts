@@ -84,6 +84,7 @@ export function useAnimation(
     }
 
     function onMouseDown(event: MouseEvent) {
+      if (chipRef.current?.contains(event.target as Node)) return
       const now = Date.now()
       recordingRef.current = { active: true, startTime: now, points: [], config: { ...configRef.current } }
       loopRef.current = null
@@ -162,6 +163,7 @@ export function useAnimation(
         setIsRecording(false)
         setStartMarker(null)
       }
+      hide()
     }
 
     const el = svgRef.current!
@@ -274,7 +276,6 @@ export function useAnimation(
               const val = chip.querySelector('.chip-value') as HTMLElement | null
               if (label) label.textContent = METRIC_LABELS[idx]
               if (val) val.textContent = value
-              chip.style.opacity = '1'
             }
           }
         } else {
@@ -287,9 +288,13 @@ export function useAnimation(
         }
       }
 
-      if (!ghostActive) {
-        const chip = chipRef.current
-        if (chip) chip.style.opacity = '0'
+      const chip = chipRef.current
+      if (chip) {
+        chip.style.opacity = (loop || recordingRef.current.active) ? '1' : '0'
+        const val = chip.querySelector('.chip-value') as HTMLElement | null
+        const label = chip.querySelector('.chip-label') as HTMLElement | null
+        if (val && !val.textContent) val.textContent = '--'
+        if (label && !label.textContent) label.textContent = METRIC_LABELS[metricIndexRef.current]
       }
 
       const timer = timerRef.current

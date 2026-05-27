@@ -18,9 +18,9 @@ export default function App() {
   const chipRef = useRef<HTMLDivElement>(null)
   const metricIndexRef = useRef<MetricIndex>(metricIndex)
   metricIndexRef.current = metricIndex
-  const loopBarRef = useRef<HTMLDivElement>(null)
+  const timerRef = useRef<HTMLDivElement>(null)
 
-  useAnimation(svgRef, config, setIsRecording, setStartMarker, chipRef, metricIndexRef, loopBarRef)
+  useAnimation(svgRef, config, setIsRecording, setStartMarker, chipRef, metricIndexRef, timerRef)
 
   function setParam<K extends keyof Config>(key: K, value: Config[K]) {
     setConfig(c => ({ ...c, [key]: value }))
@@ -29,11 +29,11 @@ export default function App() {
   return (
     <>
       <div
-        ref={loopBarRef}
+        ref={timerRef}
         style={{
           position: 'fixed', top: 0, left: 0, height: '100%',
           width: '0%', pointerEvents: 'none', zIndex: 1,
-          borderRight: '2px solid dodgerblue',
+          borderRight: '2px solid #555',
         }}
       />
 

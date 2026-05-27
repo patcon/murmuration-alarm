@@ -3,6 +3,7 @@ import * as d3 from 'd3'
 
 const LEADER_RADIUS = 44
 const FOLLOWER_RADIUS = 30
+const PANEL_HEIGHT = 185
 
 interface PhysicsConfig {
   stiffness: number
@@ -120,27 +121,26 @@ export default function App() {
         <circle ref={followerRef} className="follower" r={FOLLOWER_RADIUS} fill="none" stroke="tomato" strokeWidth={2} opacity={0} />
       </svg>
 
-      {/* Debug button (closed state) */}
-      {!debugOpen && (
-        <button
-          onClick={() => setDebugOpen(true)}
-          style={{
-            position: 'fixed',
-            bottom: 8,
-            right: 12,
-            zIndex: 10,
-            background: 'rgba(0,0,0,0.6)',
-            color: '#fff',
-            border: '1px solid #555',
-            borderRadius: 6,
-            padding: '4px 10px',
-            cursor: 'pointer',
-            fontSize: 12,
-          }}
-        >
-          Debug
-        </button>
-      )}
+      {/* Debug toggle — floats above panel */}
+      <button
+        onClick={() => setDebugOpen(o => !o)}
+        style={{
+          position: 'fixed',
+          bottom: debugOpen ? PANEL_HEIGHT + 8 : 8,
+          right: 12,
+          zIndex: 10,
+          background: 'rgba(0,0,0,0.6)',
+          color: '#fff',
+          border: '1px solid #555',
+          borderRadius: 6,
+          padding: '4px 10px',
+          cursor: 'pointer',
+          fontSize: 12,
+          transition: 'bottom 0.2s',
+        }}
+      >
+        {debugOpen ? 'Close debug' : 'Debug'}
+      </button>
 
       {/* Debug panel */}
       {debugOpen && (
@@ -149,6 +149,8 @@ export default function App() {
           bottom: 0,
           left: 0,
           right: 0,
+          height: PANEL_HEIGHT,
+          boxSizing: 'border-box',
           background: 'rgba(10,10,10,0.88)',
           color: '#eee',
           zIndex: 9,
@@ -156,28 +158,14 @@ export default function App() {
           fontSize: 13,
           backdropFilter: 'blur(4px)',
           borderTop: '1px solid #333',
+          padding: '12px 20px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
         }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 12px 0' }}>
-            <button
-              onClick={() => setDebugOpen(false)}
-              style={{
-                background: 'transparent',
-                color: '#aaa',
-                border: '1px solid #555',
-                borderRadius: 6,
-                padding: '2px 8px',
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
-            >
-              Close
-            </button>
-          </div>
-          <div style={{ padding: '8px 20px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <SliderRow label="Stiffness" value={config.stiffness} min={0.01} max={0.5} step={0.01} onChange={v => setParam('stiffness', v)} />
-            <SliderRow label="Damping" value={config.damping} min={0.1} max={0.99} step={0.01} onChange={v => setParam('damping', v)} />
-            <SliderRow label="Mass" value={config.mass} min={0.1} max={5} step={0.1} onChange={v => setParam('mass', v)} />
-          </div>
+          <SliderRow label="Stiffness" value={config.stiffness} min={0.01} max={0.5} step={0.01} onChange={v => setParam('stiffness', v)} />
+          <SliderRow label="Damping" value={config.damping} min={0.1} max={0.99} step={0.01} onChange={v => setParam('damping', v)} />
+          <SliderRow label="Mass" value={config.mass} min={0.1} max={5} step={0.1} onChange={v => setParam('mass', v)} />
         </div>
       )}
     </>

@@ -12,6 +12,13 @@ export default function App() {
   const followerRef = useRef<SVGCircleElement | null>(null)
   const [debugOpen, setDebugOpen] = useState(false)
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG)
+  const [presets, setPresets] = useState<Config[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('murmuration-presets') ?? '[]')
+    } catch {
+      return []
+    }
+  })
   const [isRecording, setIsRecording] = useState(false)
   const [startMarker, setStartMarker] = useState<{ x: number; y: number } | null>(null)
   const [metricIndex, setMetricIndex] = useState<MetricIndex>(0)
@@ -24,6 +31,17 @@ export default function App() {
 
   function setParam<K extends keyof Config>(key: K, value: Config[K]) {
     setConfig(c => ({ ...c, [key]: value }))
+  }
+
+  function savePreset() {
+    const next = [...presets, config]
+    setPresets(next)
+    localStorage.setItem('murmuration-presets', JSON.stringify(next))
+  }
+
+  function clearPresets() {
+    setPresets([])
+    localStorage.removeItem('murmuration-presets')
   }
 
   return (
@@ -123,6 +141,45 @@ export default function App() {
         <RadioRow label="Trail fade" value={config.trailFade ? 'on' : 'off'} options={[{ value: 'on', label: 'on' }, { value: 'off', label: 'off' }]} onChange={v => setParam('trailFade', v === 'on')} />
         <CheckboxRow label="Show leader" checked={config.showLeader} onChange={v => setParam('showLeader', v)} />
         <CheckboxRow label="Show follower" checked={config.showFollower} onChange={v => setParam('showFollower', v)} />
+        {presets.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {presets.map((p, i) => (
+              <button
+                key={i}
+                onClick={() => setConfig(p)}
+                style={{
+                  background: 'rgba(0,0,0,0.6)', color: '#fff',
+                  border: '1px solid #555', borderRadius: 4,
+                  padding: '3px 8px', cursor: 'pointer', fontSize: 12,
+                }}
+              >
+                Preset {i + 1}
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={savePreset}
+            style={{
+              background: 'rgba(0,0,0,0.6)', color: '#fff',
+              border: '1px solid #555', borderRadius: 4,
+              padding: '3px 8px', cursor: 'pointer', fontSize: 12,
+            }}
+          >
+            Save preset
+          </button>
+          <button
+            onClick={clearPresets}
+            style={{
+              background: 'rgba(0,0,0,0.6)', color: '#fff',
+              border: '1px solid #555', borderRadius: 4,
+              padding: '3px 8px', cursor: 'pointer', fontSize: 12,
+            }}
+          >
+            Clear presets
+          </button>
+        </div>
       </div>
     </>
   )

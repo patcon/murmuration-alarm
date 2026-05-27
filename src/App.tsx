@@ -18,6 +18,7 @@ interface Config extends PhysicsConfig {
   showLeader: boolean
   showFollower: boolean
   trailType: 'outline' | 'path'
+  trailFade: boolean
 }
 
 const DEFAULT_CONFIG: Config = {
@@ -29,6 +30,7 @@ const DEFAULT_CONFIG: Config = {
   showLeader: true,
   showFollower: true,
   trailType: 'outline',
+  trailFade: true,
 }
 
 type TrailPoint = { x: number; y: number; t: number }
@@ -51,14 +53,17 @@ function renderTrail(
   maxAge: number,
   now: number,
   trailType: 'outline' | 'path',
+  trailFade: boolean,
 ) {
   if (maxAge === 0 || buf.length === 0) {
     group.selectAll('circle').remove()
     group.selectAll('polyline').remove()
+    group.selectAll('line').remove()
     return
   }
   if (trailType === 'outline') {
     group.selectAll('polyline').remove()
+    group.selectAll('line').remove()
     group.selectAll<SVGCircleElement, TrailPoint>('circle')
       .data(buf, d => String(d.t))
       .join('circle')
@@ -68,18 +73,32 @@ function renderTrail(
       .attr('fill', 'none')
       .attr('stroke', color)
       .attr('stroke-width', strokeWidth)
-      .attr('opacity', d => Math.max(0, (1 - (now - d.t) / maxAge) * 0.5))
+      .attr('opacity', d => trailFade ? Math.max(0, (1 - (now - d.t) / maxAge) * 0.5) : 0.5)
   } else {
     group.selectAll('circle').remove()
-    const pts = buf.map(d => `${d.x},${d.y}`).join(' ')
-    group.selectAll<SVGPolylineElement, string>('polyline')
-      .data([pts])
-      .join('polyline')
-      .attr('points', d => d)
-      .attr('fill', 'none')
-      .attr('stroke', color)
-      .attr('stroke-width', strokeWidth)
-      .attr('opacity', 0.5)
+    if (trailFade && buf.length >= 2) {
+      group.selectAll('polyline').remove()
+      const pairs = d3.pairs(buf)
+      group.selectAll<SVGLineElement, [TrailPoint, TrailPoint]>('line')
+        .data(pairs, d => String(d[0].t))
+        .join('line')
+        .attr('x1', d => d[0].x).attr('y1', d => d[0].y)
+        .attr('x2', d => d[1].x).attr('y2', d => d[1].y)
+        .attr('stroke', color)
+        .attr('stroke-width', strokeWidth)
+        .attr('opacity', d => Math.max(0, (1 - (now - (d[0].t + d[1].t) / 2) / maxAge) * 0.5))
+    } else {
+      group.selectAll('line').remove()
+      const pts = buf.map(d => `${d.x},${d.y}`).join(' ')
+      group.selectAll<SVGPolylineElement, string>('polyline')
+        .data([pts])
+        .join('polyline')
+        .attr('points', d => d)
+        .attr('fill', 'none')
+        .attr('stroke', color)
+        .attr('stroke-width', strokeWidth)
+        .attr('opacity', 0.5)
+    }
   }
 }
 
@@ -238,7 +257,7 @@ export default function App() {
 
     function tick() {
       const now = Date.now()
-      const { showLeader, showFollower, leaderTrail, followerTrail, stiffness, damping, mass, trailType } = configRef.current
+      const { showLeader, showFollower, leaderTrail, followerTrail, stiffness, damping, mass, trailType, trailFade } = configRef.current
 
       // Live circles: opacity driven by visibility + show flags
       const liveVisible = leader.current.visible
@@ -269,8 +288,8 @@ export default function App() {
         }
       }
 
-      renderTrail(leaderTrailGroup, leaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now, trailType)
-      renderTrail(followerTrailGroup, followerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now, trailType)
+      renderTrail(leaderTrailGroup, leaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now, trailType, trailFade)
+      renderTrail(followerTrailGroup, followerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now, trailType, trailFade)
 
       // Ghost loop playback
       const loop = loopRef.current
@@ -313,8 +332,8 @@ export default function App() {
         }
       }
 
-      renderTrail(ghostLeaderTrailGroup, ghostLeaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now, trailType)
-      renderTrail(ghostFollowerTrailGroup, ghostFollowerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now, trailType)
+      renderTrail(ghostLeaderTrailGroup, ghostLeaderTrailRef.current, LEADER_RADIUS, 'dodgerblue', 3, leaderTrail, now, trailType, trailFade)
+      renderTrail(ghostFollowerTrailGroup, ghostFollowerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now, trailType, trailFade)
 
       rafRef.current = requestAnimationFrame(tick)
     }
@@ -404,6 +423,7 @@ export default function App() {
         <SliderRow label="Leader trail" value={config.leaderTrail} min={0} max={2000} step={50} displayValue={`${config.leaderTrail}ms`} onChange={v => setParam('leaderTrail', v)} />
         <SliderRow label="Follower trail" value={config.followerTrail} min={0} max={2000} step={50} displayValue={`${config.followerTrail}ms`} onChange={v => setParam('followerTrail', v)} />
         <RadioRow label="Trail type" value={config.trailType} options={[{ value: 'outline', label: 'outline' }, { value: 'path', label: 'path line' }]} onChange={v => setParam('trailType', v as 'outline' | 'path')} />
+        <RadioRow label="Trail fade" value={config.trailFade ? 'on' : 'off'} options={[{ value: 'on', label: 'on' }, { value: 'off', label: 'off' }]} onChange={v => setParam('trailFade', v === 'on')} />
         <CheckboxRow label="Show leader" checked={config.showLeader} onChange={v => setParam('showLeader', v)} />
         <CheckboxRow label="Show follower" checked={config.showFollower} onChange={v => setParam('showFollower', v)} />
       </div>

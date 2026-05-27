@@ -77,7 +77,8 @@ export function useAnimation(
         recordingRef.current.points.push({ x: event.clientX, y: event.clientY, t })
       }
     }
-    function onMouseLeave() {
+    function onMouseLeave(event: MouseEvent) {
+      if (chipRef.current?.contains(event.relatedTarget as Node)) return
       if (recordingRef.current.active) onMouseUp()
       hide()
     }
@@ -286,7 +287,7 @@ export function useAnimation(
         }
       }
 
-      if (!ghostActive || !liveVisible) {
+      if (!ghostActive) {
         const chip = chipRef.current
         if (chip) chip.style.opacity = '0'
       }

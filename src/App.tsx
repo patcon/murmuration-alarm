@@ -120,26 +120,27 @@ export default function App() {
         <circle ref={followerRef} className="follower" r={FOLLOWER_RADIUS} fill="none" stroke="tomato" strokeWidth={2} opacity={0} />
       </svg>
 
-      {/* Debug panel toggle */}
-      <button
-        onClick={() => setDebugOpen(o => !o)}
-        style={{
-          position: 'fixed',
-          bottom: debugOpen ? 140 : 8,
-          right: 12,
-          zIndex: 10,
-          background: 'rgba(0,0,0,0.6)',
-          color: '#fff',
-          border: '1px solid #555',
-          borderRadius: 6,
-          padding: '4px 10px',
-          cursor: 'pointer',
-          fontSize: 12,
-          transition: 'bottom 0.2s',
-        }}
-      >
-        {debugOpen ? 'Close debug' : 'Debug'}
-      </button>
+      {/* Debug button (closed state) */}
+      {!debugOpen && (
+        <button
+          onClick={() => setDebugOpen(true)}
+          style={{
+            position: 'fixed',
+            bottom: 8,
+            right: 12,
+            zIndex: 10,
+            background: 'rgba(0,0,0,0.6)',
+            color: '#fff',
+            border: '1px solid #555',
+            borderRadius: 6,
+            padding: '4px 10px',
+            cursor: 'pointer',
+            fontSize: 12,
+          }}
+        >
+          Debug
+        </button>
+      )}
 
       {/* Debug panel */}
       {debugOpen && (
@@ -148,23 +149,35 @@ export default function App() {
           bottom: 0,
           left: 0,
           right: 0,
-          height: 140,
           background: 'rgba(10,10,10,0.88)',
           color: '#eee',
-          padding: '12px 20px',
           zIndex: 9,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          gap: '10px 24px',
-          alignContent: 'start',
           fontFamily: 'monospace',
           fontSize: 13,
           backdropFilter: 'blur(4px)',
           borderTop: '1px solid #333',
         }}>
-          <SliderRow label="Stiffness" value={config.stiffness} min={0.01} max={0.5} step={0.01} onChange={v => setParam('stiffness', v)} />
-          <SliderRow label="Damping" value={config.damping} min={0.1} max={0.99} step={0.01} onChange={v => setParam('damping', v)} />
-          <SliderRow label="Mass" value={config.mass} min={0.1} max={5} step={0.1} onChange={v => setParam('mass', v)} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 12px 0' }}>
+            <button
+              onClick={() => setDebugOpen(false)}
+              style={{
+                background: 'transparent',
+                color: '#aaa',
+                border: '1px solid #555',
+                borderRadius: 6,
+                padding: '2px 8px',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+            >
+              Close
+            </button>
+          </div>
+          <div style={{ padding: '8px 20px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <SliderRow label="Stiffness" value={config.stiffness} min={0.01} max={0.5} step={0.01} onChange={v => setParam('stiffness', v)} />
+            <SliderRow label="Damping" value={config.damping} min={0.1} max={0.99} step={0.01} onChange={v => setParam('damping', v)} />
+            <SliderRow label="Mass" value={config.mass} min={0.1} max={5} step={0.1} onChange={v => setParam('mass', v)} />
+          </div>
         </div>
       )}
     </>

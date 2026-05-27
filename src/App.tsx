@@ -119,9 +119,7 @@ export default function App() {
         lastTapTime.current = 0
         const touch = event.touches[0]
         const snapshotConfig = { ...configRef.current }
-        // Seed t=0 point so playback never extrapolates before the first real position
-        const seedPoint = { x: touch.clientX, y: touch.clientY, t: 0 }
-        recordingRef.current = { active: true, startTime: now, points: [seedPoint], config: snapshotConfig }
+        recordingRef.current = { active: true, startTime: now, points: [], config: snapshotConfig }
         loopRef.current = null
         ghostPhysics.current = { x: -999, y: -999, vx: 0, vy: 0 }
         ghostLeaderDot.attr('opacity', 0)
@@ -149,6 +147,9 @@ export default function App() {
       if (recordingRef.current.active) {
         const { points, config: snapConfig } = recordingRef.current
         if (points.length >= 2) {
+          // Normalize so playback starts at t=0 from the first real movement
+          const offset = points[0].t
+          for (const p of points) p.t -= offset
           const duration = points[points.length - 1].t
           const returnDuration = computeReturnDuration(points)
           const firstPoint = points[0]

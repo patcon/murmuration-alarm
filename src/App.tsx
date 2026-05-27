@@ -19,7 +19,7 @@ const DEFAULT_CONFIG: PhysicsConfig = {
 }
 
 type RecordedPoint = { x: number; y: number; t: number }
-type Recording = { points: RecordedPoint[]; duration: number; config: PhysicsConfig }
+type Recording = { points: RecordedPoint[]; duration: number; returnDuration: number; config: PhysicsConfig }
 
 function interpolateRecording(points: RecordedPoint[], t: number): { x: number; y: number } {
   if (points.length === 0) return { x: 0, y: 0 }
@@ -34,6 +34,29 @@ function interpolateRecording(points: RecordedPoint[], t: number): { x: number; 
   if (b.t === a.t) return { x: b.x, y: b.y }
   const frac = (t - a.t) / (b.t - a.t)
   return { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac }
+}
+
+function getLoopPosition(loop: Recording, t: number): { x: number; y: number } {
+  if (t <= loop.duration) return interpolateRecording(loop.points, t)
+  // Return segment: lerp from last point back to first
+  const frac = Math.min((t - loop.duration) / loop.returnDuration, 1)
+  const first = loop.points[0], last = loop.points[loop.points.length - 1]
+  return { x: last.x + (first.x - last.x) * frac, y: last.y + (first.y - last.y) * frac }
+}
+
+function computeReturnDuration(points: RecordedPoint[]): number {
+  let pathLength = 0
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i].x - points[i - 1].x
+    const dy = points[i].y - points[i - 1].y
+    pathLength += Math.sqrt(dx * dx + dy * dy)
+  }
+  const recordingDuration = points[points.length - 1].t
+  if (pathLength === 0 || recordingDuration === 0) return 400
+  const avgSpeed = pathLength / recordingDuration
+  const first = points[0], last = points[points.length - 1]
+  const returnDist = Math.sqrt((first.x - last.x) ** 2 + (first.y - last.y) ** 2)
+  return Math.min(Math.max(returnDist / avgSpeed, 150), 1200)
 }
 
 export default function App() {
@@ -52,6 +75,7 @@ export default function App() {
 
   // Recording state
   const [isRecording, setIsRecording] = useState(false)
+  const [startMarker, setStartMarker] = useState<{ x: number; y: number } | null>(null)
   const isRecordingRef = useRef(false)
   const lastTapTime = useRef(0)
   const recordingRef = useRef<{ active: boolean; startTime: number; points: RecordedPoint[]; config: PhysicsConfig }>({
@@ -100,6 +124,7 @@ export default function App() {
       if (now - lastTapTime.current < DOUBLE_TAP_MS) {
         // Double-tap: start recording
         lastTapTime.current = 0
+        const touch = event.touches[0]
         const snapshotConfig = { ...configRef.current }
         recordingRef.current = { active: true, startTime: now, points: [], config: snapshotConfig }
         loopRef.current = null
@@ -108,6 +133,7 @@ export default function App() {
         ghostFollowerDot.attr('opacity', 0)
         isRecordingRef.current = true
         setIsRecording(true)
+        setStartMarker({ x: touch.clientX, y: touch.clientY })
       } else {
         lastTapTime.current = now
       }
@@ -129,14 +155,16 @@ export default function App() {
         const { points, config: snapConfig } = recordingRef.current
         if (points.length >= 2) {
           const duration = points[points.length - 1].t
+          const returnDuration = computeReturnDuration(points)
           const firstPoint = points[0]
-          loopRef.current = { points, duration, config: snapConfig }
+          loopRef.current = { points, duration, returnDuration, config: snapConfig }
           loopStartTime.current = Date.now()
           ghostPhysics.current = { x: firstPoint.x, y: firstPoint.y, vx: 0, vy: 0 }
         }
         recordingRef.current.active = false
         isRecordingRef.current = false
         setIsRecording(false)
+        setStartMarker(null)
       }
       hide()
     }
@@ -167,8 +195,9 @@ export default function App() {
       const loop = loopRef.current
       if (loop && loop.duration > 0) {
         const elapsed = Date.now() - loopStartTime.current
-        const t = elapsed % loop.duration
-        const ghostLeaderPos = interpolateRecording(loop.points, t)
+        const totalDuration = loop.duration + loop.returnDuration
+        const t = elapsed % totalDuration
+        const ghostLeaderPos = getLoopPosition(loop, t)
         const { stiffness, damping, mass } = loop.config
         const gp = ghostPhysics.current
         const dx = ghostLeaderPos.x - gp.x
@@ -227,6 +256,22 @@ export default function App() {
           background: 'tomato',
           zIndex: 50,
           animation: 'pulse-record 1s ease-in-out infinite',
+        }} />
+      )}
+
+      {/* Start marker: pulsing green dot at recording origin */}
+      {startMarker && (
+        <div style={{
+          position: 'fixed',
+          left: startMarker.x - 8,
+          top: startMarker.y - 8,
+          width: 16,
+          height: 16,
+          borderRadius: '50%',
+          background: 'limegreen',
+          zIndex: 50,
+          pointerEvents: 'none',
+          animation: 'pulse-record 0.8s ease-in-out infinite',
         }} />
       )}
 

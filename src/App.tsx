@@ -36,13 +36,6 @@ function interpolateRecording(points: RecordedPoint[], t: number): { x: number; 
   return { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac }
 }
 
-function getLoopPosition(loop: Recording, t: number): { x: number; y: number } {
-  if (t <= loop.duration) return interpolateRecording(loop.points, t)
-  // Return segment: lerp from last point back to first
-  const frac = Math.min((t - loop.duration) / loop.returnDuration, 1)
-  const first = loop.points[0], last = loop.points[loop.points.length - 1]
-  return { x: last.x + (first.x - last.x) * frac, y: last.y + (first.y - last.y) * frac }
-}
 
 function computeReturnDuration(points: RecordedPoint[]): number {
   let pathLength = 0
@@ -126,7 +119,9 @@ export default function App() {
         lastTapTime.current = 0
         const touch = event.touches[0]
         const snapshotConfig = { ...configRef.current }
-        recordingRef.current = { active: true, startTime: now, points: [], config: snapshotConfig }
+        // Seed t=0 point so playback never extrapolates before the first real position
+        const seedPoint = { x: touch.clientX, y: touch.clientY, t: 0 }
+        recordingRef.current = { active: true, startTime: now, points: [seedPoint], config: snapshotConfig }
         loopRef.current = null
         ghostPhysics.current = { x: -999, y: -999, vx: 0, vy: 0 }
         ghostLeaderDot.attr('opacity', 0)
@@ -197,19 +192,25 @@ export default function App() {
         const elapsed = Date.now() - loopStartTime.current
         const totalDuration = loop.duration + loop.returnDuration
         const t = elapsed % totalDuration
-        const ghostLeaderPos = getLoopPosition(loop, t)
-        const { stiffness, damping, mass } = loop.config
-        const gp = ghostPhysics.current
-        const dx = ghostLeaderPos.x - gp.x
-        const dy = ghostLeaderPos.y - gp.y
-        gp.vx = gp.vx * damping + (dx * stiffness) / mass
-        gp.vy = gp.vy * damping + (dy * stiffness) / mass
-        gp.x += gp.vx
-        gp.y += gp.vy
-        ghostLeaderDot
-          .attr('cx', ghostLeaderPos.x).attr('cy', ghostLeaderPos.y).attr('opacity', 0.4)
-        ghostFollowerDot
-          .attr('cx', gp.x).attr('cy', gp.y).attr('opacity', 0.4)
+        if (t <= loop.duration) {
+          const ghostLeaderPos = interpolateRecording(loop.points, t)
+          const { stiffness, damping, mass } = loop.config
+          const gp = ghostPhysics.current
+          const dx = ghostLeaderPos.x - gp.x
+          const dy = ghostLeaderPos.y - gp.y
+          gp.vx = gp.vx * damping + (dx * stiffness) / mass
+          gp.vy = gp.vy * damping + (dy * stiffness) / mass
+          gp.x += gp.vx
+          gp.y += gp.vy
+          ghostLeaderDot.attr('cx', ghostLeaderPos.x).attr('cy', ghostLeaderPos.y).attr('opacity', 0.4)
+          ghostFollowerDot.attr('cx', gp.x).attr('cy', gp.y).attr('opacity', 0.4)
+        } else {
+          // Return gap: hide circles and pre-position physics at start so next iteration appears cleanly
+          ghostLeaderDot.attr('opacity', 0)
+          ghostFollowerDot.attr('opacity', 0)
+          const first = loop.points[0]
+          ghostPhysics.current = { x: first.x, y: first.y, vx: 0, vy: 0 }
+        }
       }
 
       rafRef.current = requestAnimationFrame(tick)

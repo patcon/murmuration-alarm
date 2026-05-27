@@ -4,6 +4,7 @@ import * as d3 from 'd3'
 const LEADER_RADIUS = 44
 const FOLLOWER_RADIUS = 30
 const PANEL_HEIGHT = 185
+const DOUBLE_TAP_MS = 300
 
 interface PhysicsConfig {
   stiffness: number
@@ -17,6 +18,24 @@ const DEFAULT_CONFIG: PhysicsConfig = {
   mass: 1,
 }
 
+type RecordedPoint = { x: number; y: number; t: number }
+type Recording = { points: RecordedPoint[]; duration: number; config: PhysicsConfig }
+
+function interpolateRecording(points: RecordedPoint[], t: number): { x: number; y: number } {
+  if (points.length === 0) return { x: 0, y: 0 }
+  if (points.length === 1) return { x: points[0].x, y: points[0].y }
+  // Binary search for the segment containing t
+  let lo = 0, hi = points.length - 1
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1
+    if (points[mid].t <= t) lo = mid; else hi = mid
+  }
+  const a = points[lo], b = points[hi]
+  if (b.t === a.t) return { x: b.x, y: b.y }
+  const frac = (t - a.t) / (b.t - a.t)
+  return { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac }
+}
+
 export default function App() {
   const svgRef = useRef<SVGSVGElement>(null)
   const leaderRef = useRef<SVGCircleElement | null>(null)
@@ -26,17 +45,29 @@ export default function App() {
   const configRef = useRef(config)
   configRef.current = config
 
-  // Physics state (mutable, not React state)
+  // Live physics state
   const physics = useRef({ x: -999, y: -999, vx: 0, vy: 0 })
   const leader = useRef({ x: -999, y: -999, visible: false })
   const rafRef = useRef<number>(0)
+
+  // Recording state
+  const [isRecording, setIsRecording] = useState(false)
+  const isRecordingRef = useRef(false)
+  const lastTapTime = useRef(0)
+  const recordingRef = useRef<{ active: boolean; startTime: number; points: RecordedPoint[]; config: PhysicsConfig }>({
+    active: false, startTime: 0, points: [], config: DEFAULT_CONFIG,
+  })
+  const loopRef = useRef<Recording | null>(null)
+  const loopStartTime = useRef(0)
+  const ghostPhysics = useRef({ x: -999, y: -999, vx: 0, vy: 0 })
 
   useEffect(() => {
     const svg = d3.select(svgRef.current)
     const leaderDot = svg.select<SVGCircleElement>('.leader')
     const followerDot = svg.select<SVGCircleElement>('.follower')
+    const ghostLeaderDot = svg.select<SVGCircleElement>('.ghost-leader')
+    const ghostFollowerDot = svg.select<SVGCircleElement>('.ghost-follower')
 
-    // Sync follower start position on first show
     let initialized = false
 
     function show(x: number, y: number) {
@@ -63,35 +94,95 @@ export default function App() {
       show(event.clientX, event.clientY)
     }
     function onMouseLeave() { hide() }
+
+    function onTouchStart(event: TouchEvent) {
+      const now = Date.now()
+      if (now - lastTapTime.current < DOUBLE_TAP_MS) {
+        // Double-tap: start recording
+        lastTapTime.current = 0
+        const snapshotConfig = { ...configRef.current }
+        recordingRef.current = { active: true, startTime: now, points: [], config: snapshotConfig }
+        loopRef.current = null
+        ghostPhysics.current = { x: -999, y: -999, vx: 0, vy: 0 }
+        ghostLeaderDot.attr('opacity', 0)
+        ghostFollowerDot.attr('opacity', 0)
+        isRecordingRef.current = true
+        setIsRecording(true)
+      } else {
+        lastTapTime.current = now
+      }
+    }
+
     function onTouchMove(event: TouchEvent) {
       event.preventDefault()
       const touch = event.touches[0]
-      show(touch.clientX, touch.clientY)
+      const x = touch.clientX, y = touch.clientY
+      show(x, y)
+      if (recordingRef.current.active) {
+        const t = Date.now() - recordingRef.current.startTime
+        recordingRef.current.points.push({ x, y, t })
+      }
     }
-    function onTouchEnd() { hide() }
+
+    function onTouchEnd() {
+      if (recordingRef.current.active) {
+        const { points, config: snapConfig } = recordingRef.current
+        if (points.length >= 2) {
+          const duration = points[points.length - 1].t
+          const firstPoint = points[0]
+          loopRef.current = { points, duration, config: snapConfig }
+          loopStartTime.current = Date.now()
+          ghostPhysics.current = { x: firstPoint.x, y: firstPoint.y, vx: 0, vy: 0 }
+        }
+        recordingRef.current.active = false
+        isRecordingRef.current = false
+        setIsRecording(false)
+      }
+      hide()
+    }
 
     const el = svgRef.current!
     el.addEventListener('mousemove', onMouseMove)
     el.addEventListener('mouseleave', onMouseLeave)
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
     el.addEventListener('touchmove', onTouchMove, { passive: false })
     el.addEventListener('touchend', onTouchEnd)
     el.addEventListener('touchcancel', onTouchEnd)
 
-    // Animation loop
     function tick() {
+      // Live follower physics
       if (leader.current.visible) {
         const { stiffness, damping, mass } = configRef.current
         const p = physics.current
         const dx = leader.current.x - p.x
         const dy = leader.current.y - p.y
-        const ax = (dx * stiffness) / mass
-        const ay = (dy * stiffness) / mass
-        p.vx = p.vx * damping + ax
-        p.vy = p.vy * damping + ay
+        p.vx = p.vx * damping + (dx * stiffness) / mass
+        p.vy = p.vy * damping + (dy * stiffness) / mass
         p.x += p.vx
         p.y += p.vy
         followerDot.attr('cx', p.x).attr('cy', p.y)
       }
+
+      // Ghost loop playback
+      const loop = loopRef.current
+      if (loop && loop.duration > 0) {
+        const elapsed = Date.now() - loopStartTime.current
+        const t = elapsed % loop.duration
+        const ghostLeaderPos = interpolateRecording(loop.points, t)
+        const { stiffness, damping, mass } = loop.config
+        const gp = ghostPhysics.current
+        const dx = ghostLeaderPos.x - gp.x
+        const dy = ghostLeaderPos.y - gp.y
+        gp.vx = gp.vx * damping + (dx * stiffness) / mass
+        gp.vy = gp.vy * damping + (dy * stiffness) / mass
+        gp.x += gp.vx
+        gp.y += gp.vy
+        ghostLeaderDot
+          .attr('cx', ghostLeaderPos.x).attr('cy', ghostLeaderPos.y).attr('opacity', 0.4)
+        ghostFollowerDot
+          .attr('cx', gp.x).attr('cy', gp.y).attr('opacity', 0.4)
+      }
+
       rafRef.current = requestAnimationFrame(tick)
     }
 
@@ -100,6 +191,7 @@ export default function App() {
     return () => {
       el.removeEventListener('mousemove', onMouseMove)
       el.removeEventListener('mouseleave', onMouseLeave)
+      el.removeEventListener('touchstart', onTouchStart)
       el.removeEventListener('touchmove', onTouchMove)
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
@@ -117,9 +209,26 @@ export default function App() {
         ref={svgRef}
         style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', touchAction: 'none' }}
       >
+        <circle className="ghost-leader" r={LEADER_RADIUS} fill="none" stroke="dodgerblue" strokeWidth={3} opacity={0} />
+        <circle className="ghost-follower" r={FOLLOWER_RADIUS} fill="none" stroke="tomato" strokeWidth={2} opacity={0} />
         <circle ref={leaderRef} className="leader" r={LEADER_RADIUS} fill="none" stroke="dodgerblue" strokeWidth={3} opacity={0} />
         <circle ref={followerRef} className="follower" r={FOLLOWER_RADIUS} fill="none" stroke="tomato" strokeWidth={2} opacity={0} />
       </svg>
+
+      {/* Recording indicator */}
+      {isRecording && (
+        <div style={{
+          position: 'fixed',
+          top: 16,
+          right: 16,
+          width: 12,
+          height: 12,
+          borderRadius: '50%',
+          background: 'tomato',
+          zIndex: 50,
+          animation: 'pulse-record 1s ease-in-out infinite',
+        }} />
+      )}
 
       {/* Debug toggle — floats above panel */}
       <button

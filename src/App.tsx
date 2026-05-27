@@ -368,26 +368,26 @@ export default function App() {
         {debugOpen ? 'Close debug' : 'Debug'}
       </button>
 
-      {debugOpen && (
-        <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0,
-          height: PANEL_HEIGHT, overflowY: 'auto',
-          boxSizing: 'border-box',
-          background: 'rgba(10,10,10,0.88)', color: '#eee',
-          zIndex: 9, fontFamily: 'monospace', fontSize: 13,
-          backdropFilter: 'blur(4px)', borderTop: '1px solid #333',
-          padding: '12px 20px 16px',
-          display: 'flex', flexDirection: 'column', gap: 10,
-        }}>
-          <SliderRow label="Stiffness" value={config.stiffness} min={0.01} max={0.5} step={0.01} onChange={v => setParam('stiffness', v)} />
-          <SliderRow label="Damping" value={config.damping} min={0.1} max={0.99} step={0.01} onChange={v => setParam('damping', v)} />
-          <SliderRow label="Mass" value={config.mass} min={0.1} max={5} step={0.1} onChange={v => setParam('mass', v)} />
-          <SliderRow label="Leader trail" value={config.leaderTrail} min={0} max={2000} step={50} displayValue={`${config.leaderTrail}ms`} onChange={v => setParam('leaderTrail', v)} />
-          <SliderRow label="Follower trail" value={config.followerTrail} min={0} max={2000} step={50} displayValue={`${config.followerTrail}ms`} onChange={v => setParam('followerTrail', v)} />
-          <CheckboxRow label="Show leader" checked={config.showLeader} onChange={v => setParam('showLeader', v)} />
-          <CheckboxRow label="Show follower" checked={config.showFollower} onChange={v => setParam('showFollower', v)} />
-        </div>
-      )}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        height: PANEL_HEIGHT, overflowY: 'auto',
+        boxSizing: 'border-box',
+        background: 'rgba(10,10,10,0.88)', color: '#eee',
+        zIndex: 9, fontFamily: 'monospace', fontSize: 13,
+        backdropFilter: 'blur(4px)', borderTop: '1px solid #333',
+        padding: '12px 20px 16px',
+        display: 'flex', flexDirection: 'column', gap: 10,
+        transform: debugOpen ? 'translateY(0)' : `translateY(${PANEL_HEIGHT}px)`,
+        transition: 'transform 0.2s',
+      }}>
+        <SliderRow label="Stiffness" value={config.stiffness} min={0.01} max={0.5} step={0.01} onChange={v => setParam('stiffness', v)} />
+        <SliderRow label="Damping" value={config.damping} min={0.1} max={0.99} step={0.01} onChange={v => setParam('damping', v)} />
+        <SliderRow label="Mass" value={config.mass} min={0.1} max={5} step={0.1} onChange={v => setParam('mass', v)} />
+        <SliderRow label="Leader trail" value={config.leaderTrail} min={0} max={2000} step={50} displayValue={`${config.leaderTrail}ms`} onChange={v => setParam('leaderTrail', v)} />
+        <SliderRow label="Follower trail" value={config.followerTrail} min={0} max={2000} step={50} displayValue={`${config.followerTrail}ms`} onChange={v => setParam('followerTrail', v)} />
+        <CheckboxRow label="Show leader" checked={config.showLeader} onChange={v => setParam('showLeader', v)} />
+        <CheckboxRow label="Show follower" checked={config.showFollower} onChange={v => setParam('showFollower', v)} />
+      </div>
     </>
   )
 }

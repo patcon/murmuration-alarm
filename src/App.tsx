@@ -1,20 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
 
+const LEADER_RADIUS = 44
+const FOLLOWER_RADIUS = 30
+
 interface PhysicsConfig {
   stiffness: number
   damping: number
   mass: number
-  leaderRadius: number
-  followerRadius: number
 }
 
 const DEFAULT_CONFIG: PhysicsConfig = {
   stiffness: 0.12,
   damping: 0.75,
   mass: 1,
-  leaderRadius: 44,
-  followerRadius: 30,
 }
 
 export default function App() {
@@ -117,8 +116,8 @@ export default function App() {
         ref={svgRef}
         style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', touchAction: 'none' }}
       >
-        <circle ref={leaderRef} className="leader" r={config.leaderRadius} fill="none" stroke="dodgerblue" strokeWidth={3} opacity={0} />
-        <circle ref={followerRef} className="follower" r={config.followerRadius} fill="none" stroke="tomato" strokeWidth={2} opacity={0} />
+        <circle ref={leaderRef} className="leader" r={LEADER_RADIUS} fill="none" stroke="dodgerblue" strokeWidth={3} opacity={0} />
+        <circle ref={followerRef} className="follower" r={FOLLOWER_RADIUS} fill="none" stroke="tomato" strokeWidth={2} opacity={0} />
       </svg>
 
       {/* Debug panel toggle */}
@@ -126,7 +125,7 @@ export default function App() {
         onClick={() => setDebugOpen(o => !o)}
         style={{
           position: 'fixed',
-          bottom: debugOpen ? 220 : 8,
+          bottom: debugOpen ? 140 : 8,
           right: 12,
           zIndex: 10,
           background: 'rgba(0,0,0,0.6)',
@@ -149,7 +148,7 @@ export default function App() {
           bottom: 0,
           left: 0,
           right: 0,
-          height: 220,
+          height: 140,
           background: 'rgba(10,10,10,0.88)',
           color: '#eee',
           padding: '12px 20px',
@@ -166,8 +165,6 @@ export default function App() {
           <SliderRow label="Stiffness" value={config.stiffness} min={0.01} max={0.5} step={0.01} onChange={v => setParam('stiffness', v)} />
           <SliderRow label="Damping" value={config.damping} min={0.1} max={0.99} step={0.01} onChange={v => setParam('damping', v)} />
           <SliderRow label="Mass" value={config.mass} min={0.1} max={5} step={0.1} onChange={v => setParam('mass', v)} />
-          <SliderRow label="Leader radius" value={config.leaderRadius} min={5} max={120} step={1} onChange={v => setParam('leaderRadius', v)} />
-          <SliderRow label="Follower radius" value={config.followerRadius} min={5} max={120} step={1} onChange={v => setParam('followerRadius', v)} />
         </div>
       )}
     </>

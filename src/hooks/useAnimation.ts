@@ -69,8 +69,49 @@ export function useAnimation(
       initialized = false
     }
 
-    function onMouseMove(event: MouseEvent) { show(event.clientX, event.clientY) }
-    function onMouseLeave() { hide() }
+    function onMouseMove(event: MouseEvent) {
+      show(event.clientX, event.clientY)
+      if (recordingRef.current.active) {
+        const t = Date.now() - recordingRef.current.startTime
+        recordingRef.current.points.push({ x: event.clientX, y: event.clientY, t })
+      }
+    }
+    function onMouseLeave() {
+      if (recordingRef.current.active) onMouseUp()
+      hide()
+    }
+
+    function onMouseDown(event: MouseEvent) {
+      const now = Date.now()
+      recordingRef.current = { active: true, startTime: now, points: [], config: { ...configRef.current } }
+      loopRef.current = null
+      ghostPhysics.current = { x: -999, y: -999, vx: 0, vy: 0 }
+      ghostLeaderTrailRef.current.length = 0
+      ghostFollowerTrailRef.current.length = 0
+      ghostLeaderDot.attr('opacity', 0)
+      ghostFollowerDot.attr('opacity', 0)
+      setIsRecording(true)
+      setStartMarker({ x: event.clientX, y: event.clientY })
+    }
+
+    function onMouseUp() {
+      if (recordingRef.current.active) {
+        const { points, config: snapConfig } = recordingRef.current
+        if (points.length >= 2) {
+          const offset = points[0].t
+          for (const p of points) p.t -= offset
+          const duration = points[points.length - 1].t
+          const returnDuration = computeReturnDuration(points)
+          const firstPoint = points[0]
+          loopRef.current = { points, duration, returnDuration, config: snapConfig }
+          loopStartTime.current = Date.now()
+          ghostPhysics.current = { x: firstPoint.x, y: firstPoint.y, vx: 0, vy: 0 }
+        }
+        recordingRef.current.active = false
+        setIsRecording(false)
+        setStartMarker(null)
+      }
+    }
 
     function onTouchStart(event: TouchEvent) {
       const now = Date.now()
@@ -119,12 +160,13 @@ export function useAnimation(
         setIsRecording(false)
         setStartMarker(null)
       }
-      hide()
     }
 
     const el = svgRef.current!
     el.addEventListener('mousemove', onMouseMove)
     el.addEventListener('mouseleave', onMouseLeave)
+    el.addEventListener('mousedown', onMouseDown)
+    el.addEventListener('mouseup', onMouseUp)
     el.addEventListener('touchstart', onTouchStart, { passive: true })
     el.addEventListener('touchmove', onTouchMove, { passive: false })
     el.addEventListener('touchend', onTouchEnd)
@@ -259,6 +301,8 @@ export function useAnimation(
     return () => {
       el.removeEventListener('mousemove', onMouseMove)
       el.removeEventListener('mouseleave', onMouseLeave)
+      el.removeEventListener('mousedown', onMouseDown)
+      el.removeEventListener('mouseup', onMouseUp)
       el.removeEventListener('touchstart', onTouchStart)
       el.removeEventListener('touchmove', onTouchMove)
       el.removeEventListener('touchend', onTouchEnd)

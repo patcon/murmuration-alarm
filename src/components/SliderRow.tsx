@@ -16,7 +16,7 @@ export function SliderRow({ label, value, min, max, step, onChange, displayValue
       <input
         type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
-        style={{ width: '100%', accentColor: 'dodgerblue' }}
+        style={{ width: '100%', accentColor: 'dodgerblue', touchAction: 'pan-y' }}
       />
     </label>
   )

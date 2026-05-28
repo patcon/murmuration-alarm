@@ -4,8 +4,6 @@ A prototype alarm clock that wakes you up through a brief cooperative motion gam
 
 ## The idea
 
-Most alarm clocks are a fight — you against a sound. This is an experiment in a different model: being gently woken by someone else's presence, and then gently waking someone in return.
-
 The mechanic takes advantage of the [thundering herd problem](https://en.wikipedia.org/wiki/Thundering_herd_problem) — the fact that alarm clocks tend to go off at the same times across millions of people. Rather than that being a nuisance, it becomes the connective tissue: there's always someone else waking up at roughly the same time.
 
 ### The flow
@@ -14,8 +12,6 @@ The mechanic takes advantage of the [thundering herd problem](https://en.wikiped
 2. **Sync game** — you engage in a short (~1 min) cooperative synchrony game: follow a ghost pattern left by the waker, getting your body moving and your mind online.
 3. **Swarm** — you join a larger murmuration of motion from other people waking up.
 4. **Waker** — you play the other side, leaving a motion trace that will wake the next sleeper.
-
-No voice, no words, no complex interaction. Just the quiet experience of being helped by a stranger to start the day, and helping another stranger in return.
 
 ## Status
 

@@ -1,6 +1,6 @@
 # murmuration-alarm
 
-A prototype alarm clock that wakes you up through a brief cooperative motion game with a complete stranger.
+A prototype alarm clock where you're woken up by a stranger's motion, do a brief cooperative synchrony game with them, then do the same for someone else.
 
 ## The idea
 
@@ -12,6 +12,8 @@ The mechanic takes advantage of the [thundering herd problem](https://en.wikiped
 2. **Sync game** — you engage in a short (~1 min) cooperative synchrony game: follow a ghost pattern left by the waker, getting your body moving and your mind online.
 3. **Swarm** — you join a larger murmuration of motion from other people waking up.
 4. **Waker** — you play the other side, leaving a motion trace that will wake the next sleeper.
+
+The whole thing takes about a minute, involves no words or voice, and you never know who the other person is.
 
 ## Status
 

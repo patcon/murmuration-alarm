@@ -213,14 +213,12 @@ export function useAnimation(
       renderTrail(followerTrailGroup, followerTrailRef.current, FOLLOWER_RADIUS, 'tomato', 2, followerTrail, now, trailType, trailFade)
 
       const loop = loopRef.current
-      let ghostActive = false
       if (loop && loop.duration > 0) {
         const elapsed = now - loopStartTime.current
         const totalDuration = loop.duration + loop.returnDuration
         const cycle = Math.floor(elapsed / totalDuration)
         const t = elapsed % totalDuration
         if (t <= loop.duration) {
-          ghostActive = true
           const ghostLeaderPos = interpolateRecording(loop.points, t)
           const gp = ghostPhysics.current
           const dx = ghostLeaderPos.x - gp.x
